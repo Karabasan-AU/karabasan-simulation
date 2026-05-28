@@ -1,0 +1,5 @@
+{
+  "ed_source": "tcp://host.docker.internal:5555",
+  "input_sample_rate": 2400000,
+  "audio_sample_rate": 48000
+}

@@ -1,0 +1,13 @@
+services:
+  ed_system:
+    build:
+      context: .
+      dockerfile: ed_system/Dockerfile
+    environment:
+    - PYTHONUNBUFFERED=1
+    ports:
+      - "5555:5555"                  # Bilgisayarın 5555 portunu Docker'ın 5555 portuna bağlar
+    volumes:
+      - ./ed_system/src:/app/src
+      - ./shared:/app/shared
+    restart: always
