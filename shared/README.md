@@ -121,6 +121,56 @@ Donanım temin edildiğinde yalnızca `sockets` bloğundaki adresler değiştiri
 
 ---
 
+## logger.py Kullanım Kılavuzu
+
+Her modül aynı tek satır importla logger alır:
+
+```python
+from shared.logger import get_logger
+logger = get_logger(__name__)
+```
+
+### Örnek çıktı (ISO 8601 zaman damgalı)
+
+```
+2026-05-29T04:39:00+0000 [ed_system.detector] INFO: Sinyal tespit edildi.
+2026-05-29T04:39:00+0000 [sim_engine.channel] DEBUG: FFT boyutu: 1024
+2026-05-29T04:39:01+0000 [generators.fm] WARNING: SNR düşük: 3.2 dB
+2026-05-29T04:39:02+0000 [et_system.jammer] ERROR: ZMQ bağlantısı kurulamadı.
+```
+
+### Log dosyaları
+
+Her modülün logları ayrı dosyaya yazılır:
+
+```
+logs/
+├── ed_system.detector.log
+├── sim_engine.channel.log
+├── generators.fm.log
+└── et_system.jammer.log
+```
+
+> `logs/` dizini `.gitignore`'a eklenmiştir — log dosyaları repoya girmez.
+
+### Log seviyesi
+
+`shared/config.json` → `logging.level` alanından okunur. Varsayılan: `INFO`.
+Çalışma zamanında belirli bir modülün seviyesini değiştirmek için:
+
+```python
+from shared.logger import set_level
+set_level("sim_engine", "DEBUG")   # o modül için geçici olarak DEBUG'a al
+```
+
+### Kurallar
+
+- `print()` kullanmayın — her çıktı `logger` üzerinden geçmeli.
+- `get_logger(__name__)` modül seviyesinde (fonksiyon dışında) çağrılmalıdır.
+- Hakem gösterimi sırasında log seviyesini `DEBUG`'a almak için `set_level()` kullanılabilir.
+
+---
+
 ## Sorular
 
 Önce bu dosyayı ve `config.json` içindeki `_comment` alanlarını okuyun. Yanıt bulamazsanız takım kaptanıyla iletişime geçin.
