@@ -1,5 +1,150 @@
 {
-  "ed_source": "tcp://host.docker.internal:5555",
-  "input_sample_rate": 2400000,
-  "audio_sample_rate": 48000
+  "_comment": "Merkezi yapılandırma dosyası. Simülasyondan donanıma geçişte YALNIZCA bu dosya değiştirilir.",
+  "_last_updated": "2026-05-29",
+  "_notify_on_change": ["tüm ekip — format değişikliğinde takım kaptanı Slack'te bildirim gönderir"],
+
+  "sockets": {
+    "_comment": "ZMQ soket adresleri. Donanıma geçişte bu adresler SDR IP'leriyle değiştirilir.",
+
+    "generators_to_sim": {
+      "address": "zmq://localhost:5555",
+      "pattern": "PUB/SUB",
+      "description": "generators → sim_engine: Ham, idealize I/Q akışı",
+      "hardware_example": "zmq://192.168.2.1:5555"
+    },
+
+    "sim_to_ed": {
+      "address": "zmq://localhost:5556",
+      "pattern": "PUB/SUB",
+      "description": "sim_engine → ed_system: Kanal etkileri uygulanmış I/Q akışı (FSPL + AWGN + faz gecikmesi)",
+      "hardware_example": "ip:192.168.2.1"
+    },
+
+    "et_to_sim": {
+      "address": "zmq://localhost:5557",
+      "pattern": "PUB/SUB",
+      "description": "et_system → sim_engine: Karıştırma/aldatma I/Q akışı. sim_engine hedef sinyalle toplar.",
+      "hardware_example": "zmq://192.168.2.2:5557"
+    },
+
+    "ed_to_ui": {
+      "address": "ws://localhost:8765",
+      "pattern": "WebSocket",
+      "description": "ed_system → ui: JSON olay mesajları (tespit, konum, demodülasyon, karıştırma durumu)"
+    },
+
+    "ui_to_et": {
+      "address": "http://localhost:8000",
+      "pattern": "REST/RPC",
+      "description": "ui → et_system: Karıştırma ve aldatma görevlerini başlat/durdur komutları"
+    }
+  },
+
+  "simulation": {
+    "_comment": "Fiziksel kanal modellemesi için parametreler (FSPL, AWGN, TDOA). Gerçek Hz değerleri gerektirir.",
+    "sample_rate": 200000.0,
+    "center_freq": 0.0,
+    "signal_length": 1024,
+    "dtype": "complex64",
+    "map_size_meters": 1000,
+    "awgn_snr_db": 20.0,
+    "speed_of_light": 299792458.0
+  },
+
+  "ml_pipeline": {
+    "_comment": "HisarMod uyumlu ML eğitim/çıkarım parametreleri. BASEBAND — center_freq her zaman 0.0 Hz. sample_rate normalize edilmiştir, fiziksel modelleme için KULLANMA.",
+    "sample_rate": 1.0,
+    "center_freq": 0.0,
+    "signal_length": 1024,
+    "dtype": "complex64",
+    "_warning": "Bu sample_rate fiziksel değil, normalize edilmiş bir değerdir. sim_engine veya TDOA hesaplarında bu bloğu kullanmak hatalı sonuç verir."
+  },
+
+  "synthetic_signal_params": {
+    "_comment": "Sentetik veri üretiminde kullanılacak modülasyon parametreleri. simulation.sample_rate = 200000 Hz baz alınarak hesaplanmıştır.",
+    "nbfm": {
+      "deviation_hz": 2500.0,
+      "channel_bandwidth_hz": 12500.0,
+      "_note": "Klasik dar bant FM telsiz kanalı. deviation / sample_rate = 0.0125"
+    },
+    "gmsk": {
+      "bt_product": 0.3,
+      "symbol_rate": 9600.0,
+      "_note": "DMR/TETRA uyumlu GMSK. BT=0.3 standart değer."
+    },
+    "dsss": {
+      "chip_rate": 1000000.0,
+      "spreading_factor": 10,
+      "_note": "Drone kumanda simülasyonu için."
+    },
+    "gps_l1": {
+      "center_freq_real_hz": 1575420000.0,
+      "chipping_rate": 1023000.0,
+      "_note": "GPS L1 C/A kodu. sim_engine bu sinyali baseband'e indirger."
+    }
+  },
+
+  "antenna_array": {
+    "_comment": "Çoklu anten konfigürasyonu. TDOA ve faz karşılaştırmalı DF için kullanılır.",
+    "num_antennas": 3,
+    "geometry": "L-shaped",
+    "baseline_meters": 1.0,
+    "positions": [
+      {"id": "ant_0", "x_m": 0.0, "y_m": 0.0, "_note": "Referans anten"},
+      {"id": "ant_1", "x_m": 1.0, "y_m": 0.0},
+      {"id": "ant_2", "x_m": 0.0, "y_m": 1.0}
+    ]
+  },
+
+  "logging": {
+    "level": "INFO",
+    "format": "%(asctime)s [%(module)s] %(levelname)s: %(message)s",
+    "output": "stdout",
+    "file": "logs/eh_proje.log",
+    "_levels": "DEBUG | INFO | WARNING | ERROR"
+  },
+
+  "websocket_schemas": {
+    "_comment": "ed_system → ui arasındaki WebSocket mesaj şemaları. Her mesaj 'event' alanı içerir.",
+
+    "detection_event": {
+      "event": "detection",
+      "timestamp_ms": "<unix_ms>",
+      "signal_id": "<uuid>",
+      "center_freq_hz": "<float>",
+      "bandwidth_hz": "<float>",
+      "power_dbm": "<float>",
+      "modulation": "<string: FM|FSK|OOK|DSSS|UNKNOWN>",
+      "has_fhss": "<bool>",
+      "has_dsss": "<bool>"
+    },
+
+    "location_event": {
+      "event": "location",
+      "timestamp_ms": "<unix_ms>",
+      "signal_id": "<uuid>",
+      "method": "<string: TDOA|LOB|PHASE_COMPARISON>",
+      "azimuth_deg": "<float>",
+      "estimated_x_m": "<float>",
+      "estimated_y_m": "<float>",
+      "confidence": "<float: 0.0–1.0>"
+    },
+
+    "demodulation_event": {
+      "event": "demodulation",
+      "timestamp_ms": "<unix_ms>",
+      "signal_id": "<uuid>",
+      "audio_chunk_b64": "<base64 encoded PCM>",
+      "sample_rate_hz": 8000
+    },
+
+    "jamming_status_event": {
+      "event": "jamming_status",
+      "timestamp_ms": "<unix_ms>",
+      "active": "<bool>",
+      "mode": "<string: CONTINUOUS|INTERLEAVED|BARRAGE>",
+      "target_freq_hz": "<float>",
+      "jsr_db": "<float: Jammer-to-Signal Ratio>"
+    }
+  }
 }
