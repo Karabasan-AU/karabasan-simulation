@@ -216,3 +216,25 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# Log dosyaları — logs/ dizini repoya girmez
+logs/
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+.venv/
+venv/
+
+# Büyük I/Q veri dosyaları — Git LFS kullan
+*.raw
+*.cfile
+*.iq
+
+# IDE
+.vscode/
+.idea/
