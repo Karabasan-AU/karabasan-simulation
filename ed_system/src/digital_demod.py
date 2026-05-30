@@ -153,4 +153,4 @@ class DigitalDemodulator:
                 freq += beta * error
                 phase += freq + alpha * error
                 
-        return synced_symbols
+        return synced_symbols.astype(np.complex64)
