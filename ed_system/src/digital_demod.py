@@ -15,6 +15,10 @@ class DigitalDemodulator:
         self.mu = 0.0  # Kesirli gecikme (fractional interval)
         self.last_sample = np.complex64(0)
 
+        # M&M algoritması için bloklar arası hafıza
+        self.mm_last_s = np.complex64(0)
+        self.mm_last_a = np.complex64(0)
+
         self.fec_decoder = FECDecoder()
 
     def process_block(self, iq_data, mod_type):
@@ -23,9 +27,17 @@ class DigitalDemodulator:
             synced_symbols = self._gardner_clock_recovery(iq_data)
         else:
             synced_symbols = self._mueller_muller_clock_recovery(iq_data)
-            
-        # 2. Taşıyıcı Faz Senkronizasyonu (FFT + Costas/Viterbi Hibrit Yapı)
-        final_symbols = self._carrier_phase_sync(synced_symbols, mod_type, snr=15.0)
+        
+        # --- YENİ EKLENEN KISIM: Dinamik SNR Tahmini ---
+        if len(synced_symbols) > 0:
+            signal_power = np.mean(np.abs(synced_symbols)**2)
+            noise_power = np.var(synced_symbols) + 1e-10 # Sıfıra bölmeyi engelle
+            estimated_snr = 10 * np.log10(signal_power / noise_power)
+        else:
+            estimated_snr = 0.0
+
+       # 2. Taşıyıcı Faz Senkronizasyonu (Dinamik SNR ile)
+        final_symbols = self._carrier_phase_sync(synced_symbols, mod_type, snr=estimated_snr)
             
         # 3. Bit Slicing (Sembolden Bite)
         raw_bits = self.fec_decoder.bit_slicing(final_symbols, mod_type)
@@ -37,22 +49,18 @@ class DigitalDemodulator:
         return final_symbols, payload, crc_valid
 
     def _gardner_clock_recovery(self, iq_data):
-        """
-        Gardner Zamanlama Hatası Tespiti (TED) Algoritması.
-        Sembol başına 2 örnek (Samples per Symbol = 2) ile çalışır.
-        Doppler kaymalarına karşı çok dirençlidir.
-        """
         num_samples = len(iq_data)
         output_symbols = []
         
         # Vektörize interpolasyon ve hata takibi için pointer'lar
         idx = 2
         while idx < num_samples - 1:
-            # Farrow yapısı veya doğrusal interpolasyon ile optimum örnekleri buluyoruz
-            # Burada basitleştirilmiş doğrusal interpolasyon adımı:
-            s_0 = iq_data[idx - 1]
-            s_1 = iq_data[idx]
-            s_mid = iq_data[idx - 2] # Sembol ortası örnek
+            
+           # Farrow yapısı veya doğrusal interpolasyon ile optimum örnekleri buluyoruz
+            # Burada indeksleri sembol aralığına (2 örnek) göre doğru hizalıyoruz:
+            s_0 = iq_data[idx - 2]   # Önceki sembol
+            s_mid = iq_data[idx - 1] # Sembol ortası (Geçiş örneği)
+            s_1 = iq_data[idx]       # Mevcut sembol
             
             # Gardner Hata Fonksiyonu: e = real( (s_1 - s_0) * conj(s_mid) )
             error = np.real((s_1 - s_0) * np.conj(s_mid))
@@ -74,17 +82,15 @@ class DigitalDemodulator:
         return np.array(output_symbols, dtype=np.complex64)
 
     def _mueller_muller_clock_recovery(self, iq_data):
-        """
-        Mueller-Müller Karar Yönlendirmeli Zamanlama Algoritması.
-        Sembol başına 1 örnek (Samples per Symbol = 1) yeterlidir.
-        Düşük CPU tüketimi ile 17.5W sınırımızı korur.
-        """
         num_samples = len(iq_data)
         output_symbols = []
         
         idx = 1
-        last_s = np.complex64(0)
-        last_a = np.complex64(0)
+        
+        # GÜVENLİK: Eğer __init__ içinde tanımlanmayı unutulmuşsa değişkenleri ilk kez burada yarat
+        if not hasattr(self, 'mm_last_s'):
+            self.mm_last_s = np.complex64(0)
+            self.mm_last_a = np.complex64(0)
         
         while idx < num_samples:
             s_n = iq_data[idx]
@@ -93,7 +99,8 @@ class DigitalDemodulator:
             a_n = np.sign(np.real(s_n)) + 1j * np.sign(np.imag(s_n))
             
             # M&M Hata Fonksiyonu: e = real(a_{n-1} * s_n - a_n * s_{n-1})
-            error = np.real(last_a * s_n - a_n * last_s)
+            # LOKAL DEĞİŞKEN YERİNE SELF KULLANILDI (Bloklar arası veri kaybını önler)
+            error = np.real(self.mm_last_a * s_n - a_n * self.mm_last_s)
             
             # Zamanlama güncelleme
             idx_step = 1 + int(self.mm_gain * error)
@@ -101,27 +108,28 @@ class DigitalDemodulator:
             
             output_symbols.append(s_n)
             
-            last_s = s_n
-            last_a = a_n
+            # Sonraki döngü (veya sonraki process_block veri akışı) için hafızayı güncelle
+            self.mm_last_s = s_n
+            self.mm_last_a = a_n
             
         return np.array(output_symbols, dtype=np.complex64)
-    
     def _carrier_phase_sync(self, symbols, mod_type, snr=15.0):
-        """
-        KTR Dokümanı 2.2: İki Aşamalı Hibrit Taşıyıcı Faz Senkronizasyonu
-        """
         if len(symbols) == 0:
             return symbols
-            
+
         # --- AŞAMA 1: FFT Tabanlı Kaba Frekans Senkronizasyonu ---
-        # Sinyalin m. kuvvetini alarak modülasyon fazını temizliyoruz (Örn: QPSK için 4. kuvvet)
-        # FFT tepe noktası bize kaba frekans kaymasını (Doppler) verir.
         m = 4 if "QPSK" in mod_type else 2
         fft_res = np.fft.fft(symbols ** m)
         freq_idx = np.argmax(np.abs(fft_res))
         
-        # Frekans kaymasını hesapla ve anlık olarak sıfırla
-        coarse_freq_offset = np.angle(fft_res[freq_idx]) / (2 * np.pi * m)
+        # Reviewer'ın uyarısı: Fazı değil, frekans bin'ini kullanarak sapmayı bul
+        normalized_freq = freq_idx / len(symbols)
+        if normalized_freq > 0.5:
+            normalized_freq -= 1.0 # Negatif frekans bölgesi (Nyquist sonrası) için düzeltme
+            
+        coarse_freq_offset = normalized_freq / m
+        
+        # Faz düzeltmesini zaman vektörüyle sinyale uygula
         t = np.arange(len(symbols))
         symbols_coarse_corrected = symbols * np.exp(-1j * 2 * np.pi * coarse_freq_offset * t)
         
