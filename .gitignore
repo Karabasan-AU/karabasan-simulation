@@ -220,6 +220,7 @@ __marimo__/
 
 # Log dosyaları — logs/ dizini repoya girmez
 logs/
+!logs/.gitkeep
 *.log
 
 # Python
