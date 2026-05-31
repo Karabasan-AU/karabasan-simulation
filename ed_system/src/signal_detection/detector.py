@@ -14,14 +14,13 @@ def run_detector():
         config = json.load(f)
 
     # 2. Parametreleri ve Soket Adreslerini Config'den Çek
-    # PR #13 gereği fiziksel modelleme sample_rate'i kullanılıyor (2400000.0 Hz)
     sample_rate = config['simulation']['sample_rate']
     
     # Simülasyon motorundan gelen veriyi dinleme adresi (sim_engine -> ed_system)
+    # SADECE TEST İÇİN: sim_to_ed yerine generators_to_sim yapıyoruz
     raw_sub_address = config['sockets']['sim_to_ed']['address']
     connect_sub_address = raw_sub_address.replace("zmq://localhost", "tcp://localhost")
     
-    # ED Modülünün kendi tespitlerini yayınlayacağı lokal ZMQ PUB soketi
     pub_address = "tcp://*:5558" 
 
     # 3. Soketleri Kur
@@ -65,8 +64,26 @@ def run_detector():
             freqs = np.fft.fftshift(np.fft.fftfreq(nfft, d=1/sample_rate))
             center_freq_hz = freqs[peak_idx]
 
-            # --- PR #13 Uyumlu websocket_schemas.detection_event JSON Şeması ---
-            # Python 3.12+ uyumlu UTC Unix zaman damgası hesabı (utcnow deprecation çözümü)
+            # --- DİNAMİK BANT GENİŞLİĞİ (BANDWIDTH) HESABI ---
+            # Zirveden sola doğru yürü (Sinyalin sol sınırı)
+            left_idx = peak_idx
+            while left_idx > 0 and psd_db[left_idx] > threshold_db:
+                left_idx -= 1
+                
+            # Zirveden sağa doğru yürü (Sinyalin sağ sınırı)
+            right_idx = peak_idx
+            while right_idx < nfft - 1 and psd_db[right_idx] > threshold_db:
+                right_idx += 1
+                
+            # Bin sayısını Hz cinsinden frekansa çevir
+            freq_resolution = sample_rate / nfft
+            calculated_bandwidth_hz = float((right_idx - left_idx) * freq_resolution)
+
+            # Çok küçük veya sıfır çıkma ihtimaline karşı bir alt limit (örn: minimum 1 FFT bin)
+            if calculated_bandwidth_hz <= 0:
+                calculated_bandwidth_hz = float(freq_resolution)
+
+            # --- PR #13 Uyumlu JSON Şeması ---
             current_time = datetime.now(timezone.utc)
             timestamp_ms = int(current_time.timestamp() * 1000)
 
@@ -75,7 +92,7 @@ def run_detector():
                 "timestamp_ms": timestamp_ms,
                 "signal_id": str(uuid.uuid4()), 
                 "center_freq_hz": float(center_freq_hz),
-                "bandwidth_hz": 12500.0, # NBFM varsayılanı (Daha sonra dinamikleştirilecek)
+                "bandwidth_hz": calculated_bandwidth_hz, # Artık tamamen dinamik!
                 "power_dbm": float(peak_power),
                 "modulation": "FM", 
                 "has_fhss": False,  
@@ -84,7 +101,7 @@ def run_detector():
             
             # Veriyi yayınla
             pub_socket.send_string(f"ed.params {json.dumps(detection_event)}")
-            print(f"Hedef Tespit Edildi! Frekans: {center_freq_hz/1e3:.2f} kHz | Güç: {peak_power:.2f} dBm")
+            print(f"Hedef Tespit! Frekans: {center_freq_hz/1e3:.2f} kHz | Güç: {peak_power:.2f} dBm | Genişlik: {calculated_bandwidth_hz/1e3:.2f} kHz")
 
 if __name__ == "__main__":
     run_detector()
