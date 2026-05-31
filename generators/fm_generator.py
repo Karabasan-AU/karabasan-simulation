@@ -2,28 +2,36 @@ import zmq
 import numpy as np
 import time
 import json
+import os
 
-# ZMQ PUB Soketi Kurulumu
+# config.json Dosyasını Oku
+config_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '../shared/config.json'))
+with open(config_path, 'r', encoding='utf-8') as f:
+    config = json.load(f)
+
+# Parametreleri Çek
+sample_rate = config['simulation']['sample_rate']
+raw_address = config['sockets']['generators_to_sim']['address']
+bind_address = raw_address.replace("zmq://localhost", "tcp://*")
+
+# ZMQ PUB Soketi
 context = zmq.Context()
 socket = context.socket(zmq.PUB)
-socket.bind("tcp://*:5555") # config.json'dan da çekilebilir
+socket.bind(bind_address)
 
-sample_rate = 10e6 # 10 MSps
-center_freq = 100e6 # 100 MHz
+print(f"FM Generator (Sabit) aktif. Adres: {bind_address} | Sample Rate: {sample_rate} Hz")
 
-print("FM Generator aktif. ZMQ (5555) üzerinden I/Q akışı başladı...")
+chunk_size = 10000
+t_total = 0
 
 while True:
-    # 1 milisaniyelik test bloğu (10.000 örnek)
-    t = np.arange(10000) / sample_rate
+    t = np.arange(chunk_size) / sample_rate
+    t_global = t + t_total
+    t_total += chunk_size / sample_rate
     
-    # Kompleks (I/Q) sinyal üretimi
-    signal = np.exp(2j * np.pi * 1e3 * t).astype(np.complex64)
+    # Sadece temiz baseband sinyal (25 kHz offset)
+    f_offset = 25e3
+    signal = np.exp(2j * np.pi * f_offset * t).astype(np.complex64)
     
-    # Sistemin dinamik eşiğini test etmek için yapay gürültü ekleyelim
-    noise = (np.random.randn(len(t)) + 1j * np.random.randn(len(t))) * 0.1
-    iq_data = (signal + noise).astype(np.complex64)
-
-    # Veriyi byte dizisi olarak ZeroMQ'ya bas 
-    socket.send(iq_data.tobytes())
-    time.sleep(0.001) # Akış hızını dengele
+    socket.send(signal.tobytes())
+    time.sleep(0.001)
