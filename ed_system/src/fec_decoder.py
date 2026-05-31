@@ -5,9 +5,6 @@ class FECDecoder:
         pass
 
     def bit_slicing(self, synced_symbols, mod_type):
-        """
-        KTR Dokümanı 2.2: Sembolleri '0' ve '1' bit dizilerine dönüştürür.
-        """
         bits = []
         if "QPSK" in mod_type:
             # QPSK için her sembol 2 bit taşır.
@@ -25,10 +22,6 @@ class FECDecoder:
         return np.array(bits, dtype=np.uint8)
 
     def apply_fec_and_crc(self, raw_bits):
-        """
-        KTR Dokümanı 2.2: Gürültülü kanalda bozulan paketleri onarır (FEC) 
-         ve CRC ile bütünlüğü doğrular.
-        """
         if len(raw_bits) < 8:
             return None, False
             
@@ -44,7 +37,7 @@ class FECDecoder:
         # --- ADIM 3: CRC Kontrolü ---
         # Paketin son baytını CRC (CheckSum) kabul edip doğruluğunu kontrol ediyoruz
         if len(byte_chunks) > 2:
-            calculated_crc = sum(byte_chunks[:-1]) % 256
+            calculated_crc = int(np.sum(byte_chunks[:-1], dtype=int)) % 256
             received_crc = byte_chunks[-1]
             
             if calculated_crc == received_crc:
