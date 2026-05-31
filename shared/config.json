@@ -1,6 +1,6 @@
 {
   "_comment": "Merkezi yapılandırma dosyası. Simülasyondan donanıma geçişte YALNIZCA bu dosya değiştirilir.",
-  "_last_updated": "2026-05-29",
+  "_last_updated": "2026-05-31",
   "_notify_on_change": ["tüm ekip — format değişikliğinde takım kaptanı Slack'te bildirim gönderir"],
 
   "sockets": {
@@ -42,7 +42,8 @@
 
   "simulation": {
     "_comment": "Fiziksel kanal modellemesi için parametreler (FSPL, AWGN, TDOA). Gerçek Hz değerleri gerektirir.",
-    "sample_rate": 200000.0,
+    "_sample_rate_note": "2.4 MHz: DSSS/GPS sinyallerini (1 MHz BW) Nyquist ihlali olmadan taşır. TDOA çözünürlüğü ~125 m (1000 m harita için yeterli).",
+    "sample_rate": 2400000.0,
     "center_freq": 0.0,
     "signal_length": 1024,
     "dtype": "complex64",
@@ -61,11 +62,11 @@
   },
 
   "synthetic_signal_params": {
-    "_comment": "Sentetik veri üretiminde kullanılacak modülasyon parametreleri. simulation.sample_rate = 200000 Hz baz alınarak hesaplanmıştır.",
+    "_comment": "Sentetik veri üretiminde kullanılacak modülasyon parametreleri. simulation.sample_rate = 2400000 Hz baz alınarak hesaplanmıştır.",
     "nbfm": {
       "deviation_hz": 2500.0,
       "channel_bandwidth_hz": 12500.0,
-      "_note": "Klasik dar bant FM telsiz kanalı. deviation / sample_rate = 0.0125"
+      "_note": "Klasik dar bant FM telsiz kanalı. deviation / sample_rate = 0.00104"
     },
     "gmsk": {
       "bt_product": 0.3,
@@ -75,7 +76,7 @@
     "dsss": {
       "chip_rate": 1000000.0,
       "spreading_factor": 10,
-      "_note": "Drone kumanda simülasyonu için."
+      "_note": "Drone kumanda simülasyonu için. 1 MHz chip_rate, 2.4 MHz sample_rate ile Nyquist uyumlu."
     },
     "gps_l1": {
       "center_freq_real_hz": 1575420000.0,
@@ -97,10 +98,9 @@
   },
 
   "logging": {
+    "_comment": "Log seviyesi shared/logger.py tarafından okunur. Her modül logs/<module_name>.log dosyasına yazar.",
     "level": "INFO",
-    "format": "%(asctime)s [%(module)s] %(levelname)s: %(message)s",
-    "output": "stdout",
-    "file": "logs/eh_proje.log",
+    "format": "%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     "_levels": "DEBUG | INFO | WARNING | ERROR"
   },
 
