@@ -129,6 +129,48 @@ deactivate
 
 ---
 
+## Log Console
+
+The **Olay Günlüğü** panel displays two distinct event streams:
+
+### SIGINT Events
+Incoming WebSocket events from `ed_system` — detections, locations, demodulations, and jamming status updates. Forwarded via `ZMQListener` signals and rendered by `LogConsole.append_sigint()`.
+
+### System Logs
+Python `logging` records from any module in the codebase, forwarded to the console by `QtLogHandler`. Rendered by `LogConsole.append_log()` in dimmer colors to stay visually subordinate to SIGINT events.
+
+| Log Level | Color | Meaning |
+|---|---|---|
+| `DEBUG` | Dark grey | Fine-grained internal state — hidden by default |
+| `INFO` | Dark green | Normal operational messages — hidden by default |
+| `WARNING` | Orange | Recoverable issues — shown by default |
+| `ERROR` | Red | Failures that need attention — shown by default |
+| `CRITICAL` | Bright red | Fatal conditions — shown by default |
+
+The default threshold forwarded to the console is `WARNING`. To lower it at runtime (e.g. during a demo):
+
+```python
+# In main_window.py or a debug console
+self._qt_log_handler.set_console_level("DEBUG")
+```
+
+### How it is wired
+
+`QtLogHandler` is attached to Python's **root logger** in `MainWindow.__init__` after `LogConsole` is instantiated:
+
+```python
+import logging
+from ui.utils.qt_log_handler import QtLogHandler
+
+self._qt_log_handler = QtLogHandler(level=logging.WARNING)
+self._qt_log_handler.attach(self.log_console)
+logging.getLogger().addHandler(self._qt_log_handler)
+```
+
+Because it is attached to the root logger, records from every module — `ed_system`, `sim_engine`, `et_system`, and all `ui` submodules — are captured automatically without any changes to those modules.
+
+---
+
 ## Notes
 
 | Topic | Detail |
