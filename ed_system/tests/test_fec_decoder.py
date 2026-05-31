@@ -8,46 +8,47 @@ from fec_decoder import FECDecoder
 
 class TestFECDecoder(unittest.TestCase):
     def setUp(self):
+        #Test ortamını ve bağımlılıkları hazırlar.
         self.decoder = FECDecoder()
 
-    def test_bit_slicing_qpsk(self):
-        # QPSK için 4 bölgeyi (Quadrant) temsil eden kompleks semboller
-        # 1+1j -> 1,1 | -1+1j -> 0,1 | -1-1j -> 0,0 | 1-1j -> 1,0
-        qpsk_symbols = np.array([1+1j, -1+1j, -1-1j, 1-1j], dtype=np.complex64)
-        expected_bits = np.array([1, 1, 0, 1, 0, 0, 1, 0], dtype=np.uint8)
-        
-        sliced_bits = self.decoder.bit_slicing(qpsk_symbols, "QPSK")
-        np.testing.assert_array_equal(sliced_bits, expected_bits, "QPSK bit dilimleme hatası!")
+    def test_bit_slicing_all_modes(self):
+        #QPSK ve BPSK modülasyonları için bit dilimleme doğruluğunu tek bir yapıda test eder.
+        test_cases = [
+            ("QPSK", np.array([1+1j, -1+1j, -1-1j, 1-1j], dtype=np.complex64), np.array([1, 1, 0, 1, 0, 0, 1, 0], dtype=np.uint8)),
+            ("BPSK", np.array([1+0j, -1+0j], dtype=np.complex64), np.array([1, 0], dtype=np.uint8))
+        ]
 
-    def test_bit_slicing_bpsk(self):
-        # BPSK için sadece Reel eksen: 1+0j -> 1 | -1+0j -> 0
-        bpsk_symbols = np.array([1+0j, -1+0j], dtype=np.complex64)
-        expected_bits = np.array([1, 0], dtype=np.uint8)
-        
-        sliced_bits = self.decoder.bit_slicing(bpsk_symbols, "BPSK")
-        np.testing.assert_array_equal(sliced_bits, expected_bits, "BPSK bit dilimleme hatası!")
+        # subTest kullanımı: Hata çıkarsa hangi modülasyonda çıktığını nokta atışı gösterir
+        for mod_type, symbols, expected_bits in test_cases:
+            with self.subTest(mod_type=mod_type):
+                sliced_bits = self.decoder.bit_slicing(symbols, mod_type)
+                np.testing.assert_array_equal(sliced_bits, expected_bits, f"{mod_type} dilimleme hatası!")
 
-    def test_valid_crc_parsing(self):
-        # 2 Baytlık sahte veri (Payload: 10 ve 20) -> Toplam: 30 (Geçerli CRC: 30)
+    def test_crc_validation_flows(self):
+        #Geçerli ve geçersiz CRC paketlerinin sistemdeki yönlendirmelerini doğrular.
+        # Senaryo 1: Geçerli CRC (Drop edilmemeli)
         valid_bytes = np.array([10, 20, 30], dtype=np.uint8)
-        # Baytları bitlere çevirip fonksiyona yollayalım
-        valid_bits = np.unpackbits(valid_bytes)
+        payload_valid, is_valid = self.decoder.apply_fec_and_crc(np.unpackbits(valid_bytes))
         
-        payload, crc_valid = self.decoder.apply_fec_and_crc(valid_bits)
-        
-        self.assertTrue(crc_valid, "Geçerli CRC paketi yanlışlıkla reddedildi!")
-        # Beklenen payload: 10 (0x0A) ve 20 (0x14) baytları
-        self.assertEqual(payload, b'\x0a\x14', "Çözülen payload hatalı!")
+        with self.subTest(condition="Valid CRC Packet"):
+            self.assertTrue(is_valid, "Geçerli paket reddedildi!")
+            self.assertEqual(payload_valid, b'\x0a\x14')
 
-    def test_invalid_crc_drop(self):
-        # 2 Baytlık sahte veri (Payload: 10 ve 20) -> Hatalı CRC: 99
+        # Senaryo 2: Geçersiz CRC (Kesinlikle drop edilmeli)
         invalid_bytes = np.array([10, 20, 99], dtype=np.uint8)
-        invalid_bits = np.unpackbits(invalid_bytes)
+        payload_invalid, is_invalid = self.decoder.apply_fec_and_crc(np.unpackbits(invalid_bytes))
         
-        payload, crc_valid = self.decoder.apply_fec_and_crc(invalid_bits)
+        with self.subTest(condition="Invalid CRC Packet"):
+            self.assertFalse(is_invalid, "Hatalı CRC sistemi geçti!")
+            self.assertIsNone(payload_invalid)
+
+    def test_edge_case_short_packet(self):
+        #8 bitten (1 bayt) daha kısa olan eksik/kopuk paketlerin çökme yapmadan drop edilmesini test eder.
+        short_bits = np.array([1, 0, 1, 1], dtype=np.uint8)
+        payload, is_valid = self.decoder.apply_fec_and_crc(short_bits)
         
-        self.assertFalse(crc_valid, "Hatalı CRC paketi sistemden geçmeyi başardı (Büyük güvenlik açığı)!")
-        self.assertIsNone(payload, "Hatalı pakette payload dönmemeli, None olmalı!")
+        self.assertFalse(is_valid, "Eksik paketler anında reddedilmeli!")
+        self.assertIsNone(payload)
 
 if __name__ == '__main__':
     unittest.main()
