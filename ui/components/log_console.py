@@ -99,6 +99,39 @@ class LogConsole(QGroupBox):
 
         logger.debug("LogConsole hazır.")
 
+
+    def append_log(self, module: str, levelname: str, message: str) -> None:
+        """
+        Display a Python log record forwarded by QtLogHandler.
+        Visually distinct from SIGINT events — shown in dimmer colors
+        so operator-relevant events stand out.
+        """
+        _LEVEL_COLORS = {
+            "DEBUG":    "#555555",
+            "INFO":     "#007700",
+            "WARNING":  "#FFA500",
+            "ERROR":    "#FF4444",
+            "CRITICAL": "#FF0000",
+        }
+        _LEVEL_LABELS = {
+            "DEBUG":    "DBG",
+            "INFO":     "INF",
+            "WARNING":  "WRN",
+            "ERROR":    "ERR",
+            "CRITICAL": "CRT",
+        }
+        color = _LEVEL_COLORS.get(levelname, "#555555")
+        label = _LEVEL_LABELS.get(levelname, levelname[:3])
+        ts    = self._timestamp()
+        html  = (
+            f'<span style="color:#333333;">{ts}</span> '
+            f'<span style="color:{color};font-weight:bold;">[{label}]</span> '
+            f'<span style="color:#444444;">{module}:</span> '
+            f'<span style="color:{color};">{message}</span>'
+        )
+        self._append_html(html)
+        # Do not call logger here — would create a feedback loop
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
