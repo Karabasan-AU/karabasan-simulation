@@ -36,9 +36,10 @@ shared/
 
 `config.json` içinde iki farklı `sample_rate` değeri bulunmaktadır. Bu kasıtlıdır ve karıştırılmamalıdır:
 
-#### `simulation.sample_rate` = 200,000 Hz
+#### `simulation.sample_rate` = 2,400,000 Hz (2.4 MHz)
 - **Fiziksel değerdir.** FSPL, AWGN ve TDOA hesaplarında kullanılır.
-- Nanosaniyelik varış zamanı farkı (TDOA) bu değere göre hesaplanır.
+- 2.4 MHz, 1 MHz genişliğindeki DSSS ve GPS sinyallerini Nyquist ihlali olmadan taşır.
+- TDOA zaman çözünürlüğü ~0.42 µs → mesafe çözünürlüğü ~125 m (1000 m harita için yeterli).
 - `sim_engine`, `generators` ve `ed_system`'in kanal modelleme kısmı bu bloğu okur.
 
 #### `ml_pipeline.sample_rate` = 1.0 Hz (normalize)
@@ -151,7 +152,7 @@ logs/
 └── et_system.jammer.log
 ```
 
-> `logs/` dizini `.gitignore`'a eklenmiştir — log dosyaları repoya girmez.
+> `logs/` dizini `.gitignore`'a eklenmiştir — log dosyaları repoya girmez, ancak klasör yapısı `logs/.gitkeep` ile korunur.
 
 ### Log seviyesi
 
