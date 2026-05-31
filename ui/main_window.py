@@ -10,6 +10,8 @@ from ui.components.et_panel import ETPanel
 from ui.components.log_console import LogConsole
 from ui.listeners.zmq_listener import ZMQListener
 from shared.logger import get_logger
+import logging
+from ui.utils.qt_log_handler import QtLogHandler
 
 logger = get_logger(__name__)
 
@@ -37,6 +39,10 @@ class MainWindow(QMainWindow):
         self.target_table   = TargetTable()
         self.et_panel       = ETPanel()
         self.log_console    = LogConsole()
+        
+        self._qt_log_handler = QtLogHandler(level=logging.WARNING)
+        self._qt_log_handler.attach(self.log_console)
+        logging.getLogger().addHandler(self._qt_log_handler)
 
         # --- Layout ---
         central_widget = QWidget()
