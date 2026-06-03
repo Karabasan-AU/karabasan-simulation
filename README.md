@@ -221,6 +221,15 @@ Algoritmaların, arayüzün ve taarruz modüllerinin hiçbir satırı değiştir
 
 ---
 
+### 📡 Jeneratörlerin Kullanımı ve Test Senaryoları
+
+Projemizde, `sim_engine` motorunu ve tespit algoritmalarımızı izole test edebilmek için iki farklı sentetik sinyal jeneratörü bulunmaktadır:
+
+* **`fm_generator.py`:** Sabit frekanslı standart bir FM telsiz sinyali (NBFM) üretir.
+* **`fm_drone_generator.py`:** Sürekli frekans atlaması yapan (sweep) hareketli bir drone sinyali üretir.
+
+> **⚠️ Önemli Not (Port Çakışması):** > Mevcut mimaride (PR #13) her iki jeneratör de `config.json` üzerinden aynı adresi (`tcp://*:5555`) kullanmaktadır. Bu modüller, farklı hedefleri test etmek için tasarlanmış bağımsız senaryolardır. Port çakışması (ZMQ Address in use) hatası almamak adına, lokal testler sırasında **bu iki jeneratör aynı anda çalıştırılmamalıdır**. Çoklu hedeflerin aynı anda simüle edileceği mimari güncellemesi ilerleyen fazlarda `sim_engine` üzerine eklenecektir.
+
 ## Iletişim ve Sorular
 
 Mimariyle ilgili sorular için önce bu dosyayı ve shared/config.json yorumlarını okuyun.
