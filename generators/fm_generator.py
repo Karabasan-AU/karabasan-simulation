@@ -33,5 +33,8 @@ while True:
     f_offset = 25e3
     signal = np.exp(2j * np.pi * f_offset * t).astype(np.complex64)
     
-    socket.send(signal.tobytes())
+    # ESKİSİ: socket.send(signal.tobytes())
+    
+    # YENİSİ: Veriyi "ed.iq" başlığıyla paketleyip gönderiyoruz
+    socket.send_multipart([b"ed.iq", signal.tobytes()])
     time.sleep(0.001)

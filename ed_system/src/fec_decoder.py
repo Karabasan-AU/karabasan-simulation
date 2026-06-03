@@ -1,9 +1,10 @@
 import numpy as np
+from shared.profiler import measure_latency
 
 class FECDecoder:
     def __init__(self):
         pass
-
+    @measure_latency
     def bit_slicing(self, synced_symbols, mod_type):
         bits = []
         if "QPSK" in mod_type:
@@ -20,7 +21,7 @@ class FECDecoder:
                 bits.append(b)
                 
         return np.array(bits, dtype=np.uint8)
-
+    @measure_latency
     def apply_fec_and_crc(self, raw_bits):
         # Eğer paket çok çok küçükse (gürültü vb.) mecburen atılır
         if len(raw_bits) < 8:

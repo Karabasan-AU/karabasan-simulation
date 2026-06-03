@@ -18,10 +18,12 @@ def run_detector():
     
     # Simülasyon motorundan gelen veriyi dinleme adresi (sim_engine -> ed_system)
     # SADECE TEST İÇİN: sim_to_ed yerine generators_to_sim yapıyoruz
-    raw_sub_address = config['sockets']['sim_to_ed']['address']
+    raw_sub_address = config['sockets']['generators_to_sim']['address']
     connect_sub_address = raw_sub_address.replace("zmq://localhost", "tcp://localhost")
     
-    pub_address = "tcp://*:5558" 
+    pub_address = "tcp://*:5556"
+    # YENİSİ: Zorunlu IPv4 Tüneli!
+    #pub_address = "tcp://127.0.0.1:5556"
 
     # 3. Soketleri Kur
     sub_socket = context.socket(zmq.SUB)
@@ -29,13 +31,22 @@ def run_detector():
     sub_socket.setsockopt_string(zmq.SUBSCRIBE, "")
 
     pub_socket = context.socket(zmq.PUB)
+    # 1. Portu anında serbest bırakması için LINGER=0
+    pub_socket.setsockopt(zmq.LINGER, 0)
+    # 2. Portu tutan değil, yayın yapan taraf (connect yerine bind)
+    # Eğer bu Gözcü'nün ana yayın noktasıysa BIND kalmalı, 
+    # ama port çakışıyorsa FUZYON'a CONNECT etmeliyiz.
     pub_socket.bind(pub_address)
 
     print("ED DSP Modülü: Sinyal Tespiti başlatıldı...")
     print(f"Dinlenen Kanal (SUB): {connect_sub_address} | Yayınlanan Port (PUB): {pub_address}")
 
     while True:
-        message = sub_socket.recv()
+        # ESKİSİ: message = sub_socket.recv()
+        
+        # YENİSİ: Gelen başlığı (topic) ve mesajı ayırarak okuyoruz
+        topic, message = sub_socket.recv_multipart()
+        
         iq_data = np.frombuffer(message, dtype=np.complex64)
 
         if len(iq_data) == 0:
@@ -96,11 +107,16 @@ def run_detector():
                 "power_dbm": float(peak_power),
                 "modulation": "FM", 
                 "has_fhss": False,  
-                "has_dsss": False
+                "has_dsss": False,
+                "status": "active",  
+                "type": "Analog"
             }
             
-            # Veriyi yayınla
-            pub_socket.send_string(f"ed.params {json.dumps(detection_event)}")
+            ## ESKİSİ: pub_socket.send_string(f"ed.params {json.dumps(detection_event)}")
+            
+            # YENİSİ: Veriyi ZMQ Multipart formatında fırlatıyoruz!
+            pub_socket.send_multipart([b"ed.params", json.dumps(detection_event).encode('utf-8')])
+            
             print(f"Hedef Tespit! Frekans: {center_freq_hz/1e3:.2f} kHz | Güç: {peak_power:.2f} dBm | Genişlik: {calculated_bandwidth_hz/1e3:.2f} kHz")
 
 if __name__ == "__main__":
