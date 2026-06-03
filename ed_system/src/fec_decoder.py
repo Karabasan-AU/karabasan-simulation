@@ -5,9 +5,6 @@ class FECDecoder:
         pass
 
     def bit_slicing(self, synced_symbols, mod_type):
-        """
-        KTR Dokümanı 2.2: Sembolleri '0' ve '1' bit dizilerine dönüştürür.
-        """
         bits = []
         if "QPSK" in mod_type:
             # QPSK için her sembol 2 bit taşır.
@@ -25,10 +22,7 @@ class FECDecoder:
         return np.array(bits, dtype=np.uint8)
 
     def apply_fec_and_crc(self, raw_bits):
-        """
-        KTR Dokümanı 2.2: Gürültülü kanalda bozulan paketleri onarır (FEC) 
-         ve CRC ile bütünlüğü doğrular.
-        """
+        # Eğer paket çok çok küçükse (gürültü vb.) mecburen atılır
         if len(raw_bits) < 8:
             return None, False
             
@@ -41,16 +35,23 @@ class FECDecoder:
         # 8'erli gruplayarak paket haline getiriyoruz
         byte_chunks = np.packbits(corrected_bits)
         
-        # --- ADIM 3: CRC Kontrolü ---
+        # --- ADIM 3: CRC Kontrolü ve Elektronik Harp Metriği ---
         # Paketin son baytını CRC (CheckSum) kabul edip doğruluğunu kontrol ediyoruz
         if len(byte_chunks) > 2:
-            calculated_crc = sum(byte_chunks[:-1]) % 256
+            calculated_crc = int(np.sum(byte_chunks[:-1], dtype=int)) % 256
             received_crc = byte_chunks[-1]
             
+            # Payload'ı her halükarda çıkarıyoruz (çöpe atmak yok!)
+            payload = byte_chunks[:-1].tobytes()
+            
             if calculated_crc == received_crc:
-                # CRC Başarılı, şifresiz telemetri verisini (payload) döndür
-                payload = byte_chunks[:-1].tobytes()
+                # Durum 1: CRC Başarılı. Temiz telemetri verisini True bayrağıyla yolla
                 return payload, True
+            else:
+                # Durum 2: CRC BAŞARISIZ! (Karıştırma başarılı olabilir)
+                # Paketi DROP etmiyoruz. PER (Packet Error Rate) grafiği çizilebilmesi
+                # için bozuk veriyi False bayrağıyla arayüze paslıyoruz.
+                return payload, False
                 
-        # CRC başarısızsa paketi drop ediyoruz
+        # Paket 1-2 bayt ise yapısal olarak hatalıdır, işlem yapılamaz
         return None, False

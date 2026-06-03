@@ -116,7 +116,8 @@
       "power_dbm": "<float>",
       "modulation": "<string: FM|FSK|OOK|DSSS|UNKNOWN>",
       "has_fhss": "<bool>",
-      "has_dsss": "<bool>"
+      "has_dsss": "<bool>",
+      "crc_valid": "<bool>"
     },
 
     "location_event": {
