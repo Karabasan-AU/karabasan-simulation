@@ -117,7 +117,10 @@
       "modulation": "<string: FM|FSK|OOK|DSSS|UNKNOWN>",
       "has_fhss": "<bool>",
       "has_dsss": "<bool>",
-      "crc_valid": "<bool>"
+      "crc_valid": "<bool>",
+      "processing_latency_ms": "<float>",
+      "status": "active",
+      "type": "Analog"     
     },
 
     "location_event": {
@@ -136,7 +139,8 @@
       "timestamp_ms": "<unix_ms>",
       "signal_id": "<uuid>",
       "audio_chunk_b64": "<base64 encoded PCM>",
-      "sample_rate_hz": 8000
+      "sample_rate_hz": 8000,
+      "processing_latency_ms": "<float>"
     },
 
     "jamming_status_event": {

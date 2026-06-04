@@ -1,6 +1,57 @@
 import numpy as np
 from scipy import signal
 from fec_decoder import FECDecoder
+from numba import njit
+import numba as nb
+
+@njit(cache=True, fastmath=True)
+def _costas_loop_kernel(
+    samples_real: nb.float64[:],
+    samples_imag: nb.float64[:],
+    alpha: float,
+    beta: float,
+    init_phase: float,
+    init_freq: float,
+):
+    """
+    Costas Loop iç döngüsü — Numba njit ile C hızında.
+    Karmaşık dizi yerine ayrı real/imag alır: Numba'nın complex64
+    vektör desteği platforma göre değişir; bu yaklaşım taşınabilirdir.
+    """
+    n = len(samples_real)
+    out_real = np.empty(n, dtype=np.float64)
+    out_imag = np.empty(n, dtype=np.float64)
+
+    phase    = init_phase
+    freq_err = init_freq
+
+    for i in range(n):
+        # 1. Faz düzeltme: örneği tahmini fazın tersine döndür
+        cos_p = np.cos(-phase)
+        sin_p = np.sin(-phase)
+        r = samples_real[i] * cos_p - samples_imag[i] * sin_p
+        q = samples_real[i] * sin_p + samples_imag[i] * cos_p
+
+        # 2. Hata dedektörü (BPSK/QPSK uyumlu Costas sezgisi)
+        #    e = sign(I)*Q − sign(Q)*I
+        #    → QPSK için 4 bölge; BPSK için Q kanalı sıfır kabul edilir
+        sign_r = 1.0 if r >= 0.0 else -1.0
+        sign_q = 1.0 if q >= 0.0 else -1.0
+        error = sign_r * q - sign_q * r
+
+        # 3. İkinci dereceden döngü filtresi (proportional + integratör)
+        freq_err += beta  * error
+        phase    += alpha * error + freq_err
+
+        # 4. Faz sarmalama: [0, 2π) aralığında tut
+        phase = phase % (2.0 * np.pi)
+
+        out_real[i] = r
+        out_imag[i] = q
+
+    return out_real, out_imag, phase, freq_err
+
+
 
 class DigitalDemodulator:
     def __init__(self, sample_rate=2400000):
@@ -113,52 +164,52 @@ class DigitalDemodulator:
             self.mm_last_a = a_n
             
         return np.array(output_symbols, dtype=np.complex64)
-    def _carrier_phase_sync(self, symbols, mod_type, snr=15.0):
-        if len(symbols) == 0:
-            return symbols
+    def _carrier_phase_sync(self, samples: np.ndarray, mode: str = "costas",snr: float = 15.0) -> np.ndarray:
+        """
+        İki Aşamalı Hibrit Faz Senkronizasyonu (KTRSinyalİzleme §2):
+          Aşama 1 — FFT tabanlı kaba frekans kaydırma (her iki modda ortak)
+          Aşama 2 — İnce faz eşitleme:
+                     • Yüksek SNR / burst → Viterbi-Viterbi (M-th Power)
+                     • Düşük SNR / sürekli → Costas Loop (Numba JIT kernel)
+        """
+        # ── AŞAMA 1: FFT Tabanlı Kaba Frekans Düzeltme ───────────────────────
+        fft_out   = np.fft.fft(samples)
+        psd       = np.abs(fft_out) ** 2
+        peak_bin  = np.argmax(psd)
+        n         = len(samples)
+        freq_off  = (peak_bin if peak_bin < n // 2 else peak_bin - n) / n
+        t         = np.arange(n, dtype=np.float64)
+        samples   = (samples * np.exp(-2j * np.pi * freq_off * t)).astype(np.complex64)
 
-        # --- AŞAMA 1: FFT Tabanlı Kaba Frekans Senkronizasyonu ---
-        m = 4 if "QPSK" in mod_type else 2
-        fft_res = np.fft.fft(symbols ** m)
-        freq_idx = np.argmax(np.abs(fft_res))
-        
-        # Reviewer'ın uyarısı: Fazı değil, frekans bin'ini kullanarak sapmayı bul
-        normalized_freq = freq_idx / len(symbols)
-        if normalized_freq > 0.5:
-            normalized_freq -= 1.0 # Negatif frekans bölgesi (Nyquist sonrası) için düzeltme
-            
-        coarse_freq_offset = normalized_freq / m
-        
-        # Faz düzeltmesini zaman vektörüyle sinyale uygula
-        t = np.arange(len(symbols))
-        symbols_coarse_corrected = symbols * np.exp(-1j * 2 * np.pi * coarse_freq_offset * t)
-        
-        # --- AŞAMA 2: Uyarlanabilir İnce Faz Eşitleme ---
-        # Paket bazlı (burst) ve yüksek SNR durumlarında Viterbi-Viterbi açık döngüsü devreye girer
-        if "BURST" in mod_type or snr > 12.0:
-            # Viterbi-Viterbi Açık Döngü Algoritması (Veri kaybını sıfıra indirir)
-            phase_error = np.angle(np.mean(symbols_coarse_corrected ** m)) / m
-            synced_symbols = symbols_coarse_corrected * np.exp(-1j * phase_error)
-            
+        # ── AŞAMA 2: İnce Faz Eşitleme ───────────────────────────────────────
+        if mode == "viterbi":
+            # Yüksek SNR / burst iletim → M-th Power (QPSK için 4. kuvvet)
+            # Açık döngü; kilitlenme anında, preamble kaybı sıfır.
+            m         = 4
+            rotated   = samples ** m
+            phase_est = np.angle(np.mean(rotated)) / m
+            synced    = samples * np.exp(-1j * phase_est)
+
         else:
-            # Düşük SNR ve sürekli yayınlarda Costas Loop kapalı döngüsü (İşlemci bütçesini korur)
-            synced_symbols = np.zeros_like(symbols_coarse_corrected)
-            phase = 0.0
-            freq = 0.0
-            alpha = 0.1  # Döngü filtresi kazançları
-            beta = 0.01
-            
-            for i, sym in enumerate(symbols_coarse_corrected):
-                # Faz kaydırma uygulamasını yap
-                rotated_sym = sym * np.exp(-1j * phase)
-                synced_symbols[i] = rotated_sym
-                
-                # QPSK için Costas Hata Dedektörü: e = real(y)*imag(y) * (real(y)^2 - imag(y)^2)
-                error = np.real(rotated_sym) * np.imag(rotated_sym) * \
-                        (np.real(rotated_sym)**2 - np.imag(rotated_sym)**2)
-                
-                # Frekans ve faz güncelleme (Loop Filter)
-                freq += beta * error
-                phase += freq + alpha * error
-                
-        return synced_symbols.astype(np.complex64)
+            # Düşük SNR / sürekli yayın → Costas Loop (Numba JIT)
+            # Durum vektörü (phase, freq_err) bloklar arası korunur:
+            # ilk çağrıda attribute yoksa 0.0 ile başlat.
+            if not hasattr(self, '_costas_phase'):
+                self._costas_phase    = 0.0
+                self._costas_freq_err = 0.0
+
+            # Numba kernel gerçek sayı dizisi ister → view ile kopyasız dönüşüm
+            samp_f64  = samples.astype(np.complex128)
+            r_out, q_out, self._costas_phase, self._costas_freq_err = (
+                _costas_loop_kernel(
+                    samp_f64.real.copy(),   # .copy(): Numba contiguous array bekler
+                    samp_f64.imag.copy(),
+                    alpha     = 0.02,        # Uygulamaya göre ayarla
+                    beta      = 0.0001,      # alpha² / 4 ≈ iyi başlangıç noktası
+                    init_phase = self._costas_phase,
+                    init_freq  = self._costas_freq_err,
+                )
+            )
+            synced = (r_out + 1j * q_out).astype(np.complex64)
+
+        return synced
