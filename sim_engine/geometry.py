@@ -191,10 +191,10 @@ def convertToJSON(target_id, b1, intendedMeters, SNR, bearingRMSE, output_filena
 
     geolocation = {
         "id": target_id,
-        "timestamp": time.time(),
-        "latitude": intendedMeters[1],  
-        "longitude": intendedMeters[0], 
-        "azimuth_deg": b1,
+        "timestamp": float(time.time()),
+        "latitude": float(intendedMeters[1]),  
+        "longitude": float(intendedMeters[0]), 
+        "azimuth_deg": float(b1),
         "method": "amplitude",                     
         "snr_db": snr_db,
         "confidence":confidence
@@ -226,6 +226,57 @@ def trackTarget(target,current_time,start_time):
         return np.array([current_x, current_y])
     return np.array([target["x"], target["y"]])
 
+def runZmq(System1, System2, config_data):
+    address = config_data["sockets"]["generators_to_sim"]["address"].replace("zmq://", "tcp://")
+    
+    context = zmq.Context()
+    sub = context.socket(zmq.SUB)
+    
+    sub.setsockopt_string(zmq.SUBSCRIBE, "ed.iq") 
+    
+    sub.connect(address)
+    time.sleep(2)
+    
+    sub.setsockopt(zmq.RCVTIMEO, 5000)
+
+    est_target = [500, 500]
+    target_id = "TGT-001"
+
+    print(f"ZMQ dinleniyor: {address}...")
+
+    while True:
+        try:
+            message = sub.recv_multipart()
+            topic, rawIQData = message
+            
+            rawIQ = np.frombuffer(rawIQData, dtype=np.complex64)
+            realSignal = 10 * np.log10(np.mean(np.abs(rawIQ)**2) + 1e-12)
+
+            p1 = simulatePower(est_target, [System1["x"], System1["y"]], ANTENNA_SPACING_M, realSignal)
+            p2 = simulatePower(est_target, [System2["x"], System2["y"]], ANTENNA_SPACING_M, realSignal)
+
+            b1, b2 = watsonWatt(p1), watsonWatt(p2)
+            pos = weightedLob([1.0, 1.0], [b1, b2], [[System1["x"], System1["y"]], [System2["x"], System2["y"]]])
+
+            est_target = pos
+
+            liveJSON = convertToJSON(
+                target_id=target_id,
+                b1=b1,
+                intendedMeters=pos,
+                SNR=realSignal,
+                bearingRMSE=0.0
+            )
+            
+            print(json.dumps(liveJSON, indent=4))
+            print(f"Öngörülen Konum: {pos} | Açı: {b1}")
+
+        except zmq.Again:
+            print("Sinyal gelmiyor, bekleniyor...")
+            continue
+        except Exception as e:
+            print(f"Hata oluştu: {e}")
+            break
 
 
 
@@ -242,15 +293,19 @@ if __name__ == "__main__":
     
     iterations = 1000
     tx_power = 20
-    
-    bearing_rmse, distance_rmse, b1, konum, aci, json_stream_static = monteCarlos(static_target, sys1, sys2, n=iterations, originalPower=tx_power)
-    print("\n--- STATIC MONTE CARLO SONUÇLARI ---")
-    print(f"Gerçek Konum: [{static_target['x']}, {static_target['y']}] | Ölçülen Konum: [{konum[0]}, {konum[1]}]")
-    print(f"Açı RMSE: {bearing_rmse}° | Konum RMSE: {distance_rmse:.2f} metre")
 
-    bearing_rmse, distance_rmse, b1, konum, aci, json_stream_dynamic = monteCarlos(moving_target, sys1, sys2, n=iterations, originalPower=tx_power)
-    print("\n--- DYNAMIC MONTE CARLO SONUÇLARI ---")
-    print(f"Başlangıç Konumu: [{moving_target['x0']}, {moving_target['y0']}] | Son Ölçülen Konum: [{konum[0]}, {konum[1]}]")
-    print(f"Açı RMSE: {bearing_rmse}° | Konum RMSE: {distance_rmse:} metre")
-    print()
+    mode = input("Mod seçin [S]/[C]: ").upper()
+    if mode == 'C':
+        runZmq(sys1,sys2,data)
+    else:
+        bearing_rmse, distance_rmse, b1, konum, aci, json_stream_static = monteCarlos(static_target, sys1, sys2, n=iterations, originalPower=tx_power)
+        print("\n--- STATIC MONTE CARLO SONUÇLARI ---")
+        print(f"Gerçek Konum: [{static_target['x']}, {static_target['y']}] | Ölçülen Konum: [{konum[0]}, {konum[1]}]")
+        print(f"Açı RMSE: {bearing_rmse}° | Konum RMSE: {distance_rmse:.2f} metre")
+
+        bearing_rmse, distance_rmse, b1, konum, aci, json_stream_dynamic = monteCarlos(moving_target, sys1, sys2, n=iterations, originalPower=tx_power)
+        print("\n--- DYNAMIC MONTE CARLO SONUÇLARI ---")
+        print(f"Başlangıç Konumu: [{moving_target['x0']}, {moving_target['y0']}] | Son Ölçülen Konum: [{konum[0]}, {konum[1]}]")
+        print(f"Açı RMSE: {bearing_rmse}° | Konum RMSE: {distance_rmse:} metre")
+        print()
 
