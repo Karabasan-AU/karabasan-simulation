@@ -85,17 +85,74 @@
     }
   },
 
+  "field":{
+    "x":1000,
+    "y":1000
+  },
+
+  "systems":[
+        {
+            "_comment": "Çoklu anten konfigürasyonu. DF için kullanılır, tekrardan kontrol edilmesi gerekiyor.",
+            "id":"MainSystem",
+            "num_antennas": 4,
+            "geometry": "Mirror",
+            "baseline_meters": 1.0,
+            "x":100,
+            "y":500,
+            "antennas":[
+                "N",
+                "S",
+                "E",
+                "W"
+            ]
+
+        },
+        {
+            "id":"System2",
+            "x":900,
+            "y":500,
+            "antennas":[
+                "N",
+                "S",
+                "E",
+                "W"
+            ]
+        }
+    ],
+  
   "antenna_array": {
-    "_comment": "Çoklu anten konfigürasyonu. TDOA ve faz karşılaştırmalı DF için kullanılır.",
-    "num_antennas": 3,
-    "geometry": "L-shaped",
+    "_comment": "Çoklu anten konfigürasyonu. DF için kullanılır, tekrardan kontrol edilmesi gerekiyor.",
+    "num_antennas": 4,
+    "geometry": "Mirror",
     "baseline_meters": 1.0,
     "positions": [
-      {"id": "ant_0", "x_m": 0.0, "y_m": 0.0, "_note": "Referans anten"},
-      {"id": "ant_1", "x_m": 1.0, "y_m": 0.0},
-      {"id": "ant_2", "x_m": 0.0, "y_m": 1.0}
-    ]
+      {"id": "N", "x_m": 0.0, "y_m": 0.0, "_note": "Referans anten"},
+      {"id": "S", "x_m": 1.0, "y_m": 0.0},
+      {"id": "W", "x_m": 0.0, "y_m": 1.0},
+      {"id": "E", "x_m": 0.0, "y_m": 0.0}
+    ],
+    "x":100,
+    "y":500
   },
+
+
+  "targets":[
+    {
+      "id":"Static",
+      "type":"static",
+      "x":500,
+      "y":700
+    },
+    {
+      "id":"Dynamic",
+      "type":"moving",
+      "x0":200,
+      "y0":400,
+      "xV":5,
+      "yV":7
+    }
+  ],
+
 
   "logging": {
     "_comment": "Log seviyesi shared/logger.py tarafından okunur. Her modül logs/<module_name>.log dosyasına yazar.",

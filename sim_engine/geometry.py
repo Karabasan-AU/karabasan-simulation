@@ -1,6 +1,8 @@
 import numpy as np                   
-import json              
+import json
+from pathlib import Path            
 import time
+import zmq
 
 C = 299792458
 FREQUENCY_HZ = 433e6       # Watson-Watt için
@@ -8,9 +10,16 @@ WAVELENGTH   = C / FREQUENCY_HZ  # λ hesabı için
 ANTENNA_SPACING_M = 0.05    # d/λ oranı için /// change later, this is random
 sigma2 = 1e-15 #look into hackrf noise
 
-def readJson(config):
+
+base_path = Path("C:/Users/serhat/Desktop/karabasan-simulation")
+file_path = base_path / "shared" / "config.json"
+
+_CONFIG_PATH = Path(__file__).parent.parent / "shared" / "config.json"
+
+
+def readJson():
     try:
-        with open(config,"r") as file:
+        with open(file_path,"r") as file:
             data = json.load(file)
         print("file data: ",data)
     except Exception as err:
@@ -221,7 +230,7 @@ def trackTarget(target,current_time,start_time):
 
 
 if __name__ == "__main__":
-    data = readJson("data.json")
+    data = readJson()
     
     sys1 = data["systems"][0]
     sys2 = data["systems"][1]
@@ -229,7 +238,7 @@ if __name__ == "__main__":
     moving_target = data["targets"][1]
     
     print("\nSimülasyon Başlatılıyor...")
-    print(f"Hedef Gerçek Konumu: [{static_target['x']}, {static_target['y']}]")
+
     
     iterations = 1000
     tx_power = 20
@@ -242,5 +251,6 @@ if __name__ == "__main__":
     bearing_rmse, distance_rmse, b1, konum, aci, json_stream_dynamic = monteCarlos(moving_target, sys1, sys2, n=iterations, originalPower=tx_power)
     print("\n--- DYNAMIC MONTE CARLO SONUÇLARI ---")
     print(f"Başlangıç Konumu: [{moving_target['x0']}, {moving_target['y0']}] | Son Ölçülen Konum: [{konum[0]}, {konum[1]}]")
-    print(f"Açı RMSE: {bearing_rmse}° | Konum RMSE: {distance_rmse} metre")
+    print(f"Açı RMSE: {bearing_rmse}° | Konum RMSE: {distance_rmse:} metre")
+    print()
 
